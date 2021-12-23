@@ -1,0 +1,19 @@
+# Created by .ignore support plugin (hsz.mobi)
+
+out
+build
+.gradle
+.idea
+*.iml
+
+/local.properties
+
+/.gradletasknamecache
+
+*.log
+**/*.log
+
+tmp
+**/libs
+
+transaction-logs

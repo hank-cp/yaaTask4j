@@ -1,0 +1,23 @@
+name: Release
+
+on:
+  release:
+    types: published
+
+jobs:
+  openjdk8:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v1
+      with:
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+    - name: Set up JDK 8
+      uses: actions/setup-java@v1
+      with:
+        java-version: 8
+    - run: ./gradlew jar
+    - run: ./gradlew publish -Pversion=${GITHUB_REF##*/} -P'signing.keyId=${{ secrets.signingKeyId }}' -P'signing.password=${{ secrets.signingPassword }}' -P'sonatypeUsername=${{ secrets.sonatypeUsername }}' -P'sonatypePassword=${{ secrets.sonatypePassword }}'

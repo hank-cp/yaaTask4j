@@ -1,0 +1,188 @@
+def checkProperty(Project project, String propName) {
+    if (!project.hasProperty(propName)) return false
+    String prop = project.property(propName)
+    return prop != null && prop.length() > 0
+}
+
+def getPropertyOrElse(Project project, String propName, String alternative) {
+    if (!checkProperty(project, propName)) return alternative
+    return project.property(propName)
+}
+
+buildscript {
+    ext.lombokVersion = '1.18.8'
+
+    repositories {
+        jcenter()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'ch.raffael.markdown-doclet:markdown-doclet:1.4'
+    }
+}
+
+plugins {
+    id 'idea'
+}
+
+//*************************************************************************
+// IDEA
+//*************************************************************************
+
+idea {
+    module {
+        inheritOutputDirs = true
+        downloadSources = true
+    }
+}
+
+//*************************************************************************
+// Sub Project Config
+//*************************************************************************
+
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+apply plugin: 'java'
+apply plugin: 'jacoco'
+apply plugin: 'maven-publish'
+apply plugin: 'signing'
+
+//*************************************************************************
+// Properties
+//*************************************************************************
+
+Properties localProp = new Properties()
+try {
+    localProp.load(project.rootProject.file('local.properties').newDataInputStream())
+} catch(Exception ignored) {}
+for (String propKey in localProp.keys()) {
+    ext.set(propKey, localProp.get(propKey))
+}
+ext."signing.secretKeyRingFile" = rootProject.file('publish.gpg')
+
+task setProperties {
+    doFirst {
+        project.ext.executable = "$project.name"
+    }
+}
+
+//*************************************************************************
+// Compile & Assemble
+//*************************************************************************
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+tasks.withType(AbstractCompile) {
+    options.encoding = 'UTF-8'
+}
+tasks.withType(Javadoc) {
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest.attributes provider: 'gradle'
+    enabled true
+    doFirst {
+        archiveFileName = "$project.name-$version.${archiveExtension.get()}"
+    }
+}
+
+test {
+    testLogging.showStandardStreams = true
+    workingDir = project.rootDir
+    testLogging {
+        events "failed"
+        exceptionFormat "short"
+    }
+}
+
+dependencies {
+    compile "org.projectlombok:lombok:${lombokVersion}"
+    annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+    testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+    implementation 'com.networknt:slf4j-logback:2.0.32'
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
+
+    testImplementation 'junit:junit:4.13.2'
+}
+
+//*************************************************************************
+// Maven
+//*************************************************************************
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    archiveClassifier.set('sources')
+    from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    archiveClassifier.set('javadoc')
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives jar
+    archives sourcesJar
+    archives javadocJar
+}
+
+group = 'org.laxture'
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = project.getGroup()
+            from components.java
+            artifact sourcesJar
+            artifact javadocJar
+            pom {
+                name = project.name
+                description = 'Yet another async task manager for java to simplify multi-thread task execution on Java.'
+                url = 'https://github.com/hank-cp/yaaTask4j'
+                organization {
+                    name = 'org.laxture'
+                    url = 'https://laxture.org'
+                }
+                issueManagement {
+                    system = 'GitHub'
+                    url = 'https://github.com/hank-cp/yaaTask4j/issues'
+                }
+                license {
+                    name = 'Apache License 2.0'
+                    url = 'https://github.com/hank-cp/yaaTask4j/blob/master/LICENSE'
+                    distribution = 'repo'
+                }
+                scm {
+                    url = 'https://github.com/hank-cp/yaaTask4j'
+                    connection = 'scm:git:git://github.com/hank-cp/yaaTask4j.git'
+                    developerConnection = 'scm:git:ssh://git@github.com:hank-cp/yaaTask4j.git'
+                }
+                developers {
+                    developer {
+                        name = 'Hank CP'
+                        email = 'true.cp@gmail.com'
+                    }
+                }
+            }
+            repositories {
+                maven {
+                    def snapshotsRepoUrl = "https://oss.sonatype.org/content/repositories/snapshots"
+                    def stagingRepoUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+                    url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : stagingRepoUrl
+                    credentials {
+                        username getPropertyOrElse(project, 'sonatypeUsername', '')
+                        password getPropertyOrElse(project, 'sonatypePassword', '')
+                    }
+                }
+            }
+        }
+    }
+}
+
+signing {
+    sign publishing.publications.mavenJava
+}
