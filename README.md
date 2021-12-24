@@ -1,5 +1,14 @@
+[![GitHub release](https://img.shields.io/github/release/hank-cp/yaaTask4j.svg)](https://github.com/hank-cp/sbp/releases)
+![Maven Central](https://img.shields.io/maven-central/v/org.laxture/yaaTask4j)
+![Test](https://github.com/yaaTask4j/sbp/workflows/CI%20Test/badge.svg)
+![GitHub](https://img.shields.io/github/license/hank-cp/yaaTask4j.svg)
+![GitHub last commit](https://img.shields.io/github/last-commit/hank-cp/yaaTask4j.svg)
+
 # YaaTask4j
-Yet another async task manager for java to simplify multi-thread task execution on Java.
+**Y**et **A**nother **A**sync task manager for java to simplify multi-thread task execution for Java.
+It has been used for production for 10+ years.
+
+[中文](README.zh-cn.md)
 
 ### Setup
 * Maven
@@ -19,9 +28,12 @@ Yet another async task manager for java to simplify multi-thread task execution 
   
 ### Usage
 ```java
-  ImmediateTaskManager.getInstance().queue(TaskBuilder.build(() -> {
-    // hello world
-  }));
+    ImmediateTaskManager.getInstance().queue(TaskBuilder.build(
+        taskId, // optional, could be used to find task from TaskManager later
+        taskTag, // optional, could be used to find task from TaskManager later
+        () -> {
+            // hello world
+        }));
 ```
 
 ### Features
@@ -32,22 +44,25 @@ Yet another async task manager for java to simplify multi-thread task execution 
     * `queueAndAwait(task)` put the task to the end of execution queue and wait for it finished.
     * `push(task)` put the task to the head of execution queue.
     * `pushAndAwait(task)` put the task to the head of execution queue and wait for it finished.
-  * Management
-    * `getRunningTaskCount()` get currently running tasks count.
-    * `getPendingTaskCount()` get currently pending tasks count.
-    * `getRunningTasks()` get currently running tasks
-    * `getPendingTasks()` get currently pending tasks
-    * `getAllTasks()` get all tasks
-    * `findTask(taskId)` find task by task id
-    * `findTaskInQueue(taskId)` find pending task by task id
+  * Cancellation
     * `cancelAll()` cancel all tasks execution, include running tasks
     * `cancelByTag(taskTag)` cancel tasks by provided tag execution, include running tasks
     * `cancel(task)` cancel specific task execution
-* Three `TaskManager` is provided for different purposes
-  * `ImmediateTaskManager` runs task immediately.
-  * `SerialTaskManager` runs task one by one in serial.
-  * `QueueTaskManager` runs task in a concurrent queue, maximum concurrent count is default
+  * Management
+    * `getRunningTaskCount()` get currently running tasks count.
+    * `getPendingTaskCount()` get currently pending tasks count.
+    * `getRunningTasks()` get currently running task instances.
+    * `getPendingTasks()` get currently pending task instances.
+    * `getAllTasks()` get all tasks.
+    * `findTask(taskId)` find task by task id.
+    * `findTaskInQueue(taskId)` find pending task by task id.
+* Three `TaskManager` are provided for different purposes:
+  * `ImmediateTaskManager` executes task immediately.
+  * `SerialTaskManager` executes only one task at the same time. Tasks in queue will be executed one by one in serial.
+  * `QueueTaskManager` executes task in a concurrent queue, maximum concurrent count is default
     to host machine's CPU core count.
+  * You could implement `TaskManager` with your own thread pool policy.
+* Java 8/Android supported.
 
 ### License 
 
