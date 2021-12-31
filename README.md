@@ -1,6 +1,6 @@
 [![GitHub release](https://img.shields.io/github/release/hank-cp/yaaTask4j.svg)](https://github.com/hank-cp/sbp/releases)
 ![Maven Central](https://img.shields.io/maven-central/v/org.laxture/yaaTask4j)
-![Test](https://github.com/yaaTask4j/sbp/workflows/CI%20Test/badge.svg)
+![Test](https://img.shields.io/github/workflow/status/hank-cp/yaaTask4j/CI%20Test)
 ![GitHub](https://img.shields.io/github/license/hank-cp/yaaTask4j.svg)
 ![GitHub last commit](https://img.shields.io/github/last-commit/hank-cp/yaaTask4j.svg)
 
