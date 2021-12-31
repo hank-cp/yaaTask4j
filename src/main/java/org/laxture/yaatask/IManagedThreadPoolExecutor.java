@@ -15,33 +15,22 @@
  */
 package org.laxture.yaatask;
 
-import java.util.concurrent.CountDownLatch;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
 
 /**
  * @author <a href="https://github.com/hank-cp">Hank CP</a>
  */
-public class SimulatedLatchTask extends SimulatorTask {
+public interface IManagedThreadPoolExecutor extends ExecutorService {
 
-    private CountDownLatch latch = new CountDownLatch(1);
+    List<YaaAsyncTask<?>> getRunningPool();
 
-    @Override
-    protected String simulateRun() {
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            new RuntimeException("Failed to sleep", e);
-        }
-        return "SimulatorTask Finished";
-    }
+    int getActiveCount();
 
-    public void letGo() {
-        latch.countDown();
-    }
+    BlockingQueue<Runnable> getQueue();
 
-    @Override
-    public boolean cancel() {
-        letGo();
-        return super.cancel();
-    }
+    void purge();
+
 
 }

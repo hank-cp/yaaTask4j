@@ -106,7 +106,7 @@ public class TaskManagerTest {
         assertEquals(YaaTask.State.Failed, task.getState());
     }
 
-
+    @Test
     public void testRunImmediately() {
         CountDownLatch latch = new CountDownLatch(5);
         try {
@@ -131,7 +131,7 @@ public class TaskManagerTest {
         log.debug("Release waiting tasks");
         for (YaaAsyncTask<?> task : tasks) {
             SimulatedLatchTask latchTask = (SimulatedLatchTask) task;
-            latchTask.greenLight();
+            latchTask.letGo();
         }
 
         try {
@@ -147,6 +147,7 @@ public class TaskManagerTest {
         assertEquals(0, tasks.size());
     }
 
+    @Test
     public void testRunInSerial() {
         CountDownLatch latch = new CountDownLatch(5);
         try {
@@ -168,40 +169,44 @@ public class TaskManagerTest {
         assertEquals(4, SerialTaskManager.getInstance().getPendingTaskCount());
 
         SimulatedLatchTask runningTask = (SimulatedLatchTask) SerialTaskManager.getInstance().getRunningTasks().get(0);
-        runningTask.greenLight();
+        runningTask.letGo();
         waitAWhile();
         assertEquals(1, SerialTaskManager.getInstance().getRunningTaskCount());
         assertEquals(3, SerialTaskManager.getInstance().getPendingTaskCount());
 
         runningTask = (SimulatedLatchTask) SerialTaskManager.getInstance().getRunningTasks().get(0);
-        runningTask.greenLight();
+        runningTask.letGo();
         waitAWhile();
         assertEquals(1, SerialTaskManager.getInstance().getRunningTaskCount());
         assertEquals(2, SerialTaskManager.getInstance().getPendingTaskCount());
 
         runningTask = (SimulatedLatchTask) SerialTaskManager.getInstance().getRunningTasks().get(0);
-        runningTask.greenLight();
+        runningTask.letGo();
         waitAWhile();
         assertEquals(1, SerialTaskManager.getInstance().getRunningTaskCount());
         assertEquals(1, SerialTaskManager.getInstance().getPendingTaskCount());
 
         runningTask = (SimulatedLatchTask) SerialTaskManager.getInstance().getRunningTasks().get(0);
-        runningTask.greenLight();
+        runningTask.letGo();
         waitAWhile();
         assertEquals(1, SerialTaskManager.getInstance().getRunningTaskCount());
         assertEquals(0, SerialTaskManager.getInstance().getPendingTaskCount());
 
         runningTask = (SimulatedLatchTask) SerialTaskManager.getInstance().getRunningTasks().get(0);
-        runningTask.greenLight();
+        runningTask.letGo();
         waitAWhile();
         assertEquals(0, SerialTaskManager.getInstance().getRunningTaskCount());
         assertEquals(0, SerialTaskManager.getInstance().getPendingTaskCount());
     }
 
+    @Test
     public void testQueueTask() {
-        CountDownLatch latch = new CountDownLatch(5);
+        int poolSize = Runtime.getRuntime().availableProcessors();
+        int taskCount = poolSize * 2;
+
+        CountDownLatch latch = new CountDownLatch(taskCount);
         try {
-            for (int i=0; i<5; i++) {
+            for (int i=0; i<taskCount; i++) {
                 final SimulatedLatchTask task = new SimulatedLatchTask();
                 task.setId(Integer.toString(i));
                 task.testThreadLatch = latch;
@@ -215,58 +220,62 @@ public class TaskManagerTest {
         // wait a while so task will be put in the running queue
         waitAWhile();
 
-        log.debug("assertion for <testQueueTask> ");
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(2, QueueTaskManager.getInstance().getPendingTaskCount());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize, QueueTaskManager.getInstance().getPendingTaskCount());
 
         // task_0 is running
-        SimulatedLatchTask task_0 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("0");
-        assertEquals(YaaTask.State.Running, task_0.getState());
-        SimulatedLatchTask task_1 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("1");
-        assertEquals(YaaTask.State.Running, task_1.getState());
-        SimulatedLatchTask task_2 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("2");
-        assertEquals(YaaTask.State.Running, task_2.getState());
-        // task_3 is submitToApproval in head of the queue
-        SimulatedLatchTask task_3 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("3");
-        assertEquals(YaaTask.State.Pending, task_3.getState());
-        SimulatedLatchTask task_4 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("4");
-        assertEquals(YaaTask.State.Pending, task_4.getState());
+        for (int i=0; i<taskCount; i++) {
+            if (i < poolSize) {
+                SimulatedLatchTask task = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(i+"");
+                assertEquals(YaaTask.State.Running, task.getState());
+            } else {
+                SimulatedLatchTask task = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(i+"");
+                assertEquals(YaaTask.State.Pending, task.getState());
+            }
+        }
         // let the task_0 go
-        task_0.greenLight();
+        SimulatedLatchTask task_0 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("0");
+        task_0.letGo();
         waitAWhile();
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(1, QueueTaskManager.getInstance().getPendingTaskCount());
-        // task_3 should be started now
-        assertEquals(YaaTask.State.Running, task_3.getState());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize - 1, QueueTaskManager.getInstance().getPendingTaskCount());
+
+        // first pending task should be started now
+        SimulatedLatchTask task_pending = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(poolSize + "");
+        assertEquals(YaaTask.State.Running, task_pending.getState());
 
         // push a new task_6 to head of waiting queue
         try {
-            final SimulatedLatchTask task = new SimulatedLatchTask();
-            task.setId("5");
-            task.testThreadLatch = latch;
-            new Thread(() -> QueueTaskManager.getInstance().push(task)).run();
+            final SimulatedLatchTask task_jump = new SimulatedLatchTask();
+            task_jump.setId(taskCount + "");
+            task_jump.testThreadLatch = latch;
+            new Thread(() -> QueueTaskManager.getInstance().push(task_jump)).run();
         } catch (Throwable e) {
             log.error("lock latch failed", e);
             assertFalse(e.getMessage(), true);
         }
 
         waitAWhile();
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(2, QueueTaskManager.getInstance().getPendingTaskCount());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize, QueueTaskManager.getInstance().getPendingTaskCount());
 
         // let the task_3 go
-        task_3.greenLight();
+        task_pending.letGo();
         waitAWhile();
-        assertEquals(YaaTask.State.Finished, task_3.getState());
+        assertEquals(YaaTask.State.Finished, task_pending.getState());
         // task_5 should be started now
-        SimulatedLatchTask task_5 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("5");
-        assertEquals(YaaTask.State.Running, task_5.getState());
+        SimulatedLatchTask task_jump = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(taskCount + "");
+        assertEquals(YaaTask.State.Running, task_jump.getState());
     }
 
+    @Test
     public void testResueTask() {
-        CountDownLatch latch = new CountDownLatch(5);
+        int poolSize = Runtime.getRuntime().availableProcessors();
+        int taskCount = poolSize * 2;
+
+        CountDownLatch latch = new CountDownLatch(taskCount);
         try {
-            for (int i=0; i<5; i++) {
+            for (int i=0; i<taskCount; i++) {
                 final SimulatedLatchTask task = new SimulatedLatchTask();
                 task.setId(Integer.toString(i));
                 task.testThreadLatch = latch;
@@ -280,22 +289,15 @@ public class TaskManagerTest {
         // wait a while so task will be put in the running queue
         waitAWhile();
 
-        log.debug("assertion for <testQueueTask> ");
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(2, QueueTaskManager.getInstance().getPendingTaskCount());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize, QueueTaskManager.getInstance().getPendingTaskCount());
 
         // task_0 is running
         SimulatedLatchTask task_0 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("0");
         assertEquals(YaaTask.State.Running, task_0.getState());
-        SimulatedLatchTask task_1 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("1");
-        assertEquals(YaaTask.State.Running, task_1.getState());
-        SimulatedLatchTask task_2 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("2");
-        assertEquals(YaaTask.State.Running, task_2.getState());
-        // task_3 is submitToApproval in head of the queue
-        SimulatedLatchTask task_3 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("3");
-        assertEquals(YaaTask.State.Pending, task_3.getState());
-        SimulatedLatchTask task_4 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("4");
-        assertEquals(YaaTask.State.Pending, task_4.getState());
+        // first pending task is pending
+        SimulatedLatchTask task_pending = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(poolSize + "");
+        assertEquals(YaaTask.State.Pending, task_pending.getState());
 
         // queue a new task_0, the original task_0 should be reuse.
         try {
@@ -309,9 +311,8 @@ public class TaskManagerTest {
         }
 
         // queue should be the same.
-        log.debug("assertion for");
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(2, QueueTaskManager.getInstance().getPendingTaskCount());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize, QueueTaskManager.getInstance().getPendingTaskCount());
         // task_0 shouldn't be changed.
         SimulatedLatchTask task_0_2 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("0");
         assertSame(task_0_2, task_0);
@@ -319,7 +320,7 @@ public class TaskManagerTest {
         // push a new task_4, the original task_0 should be reuse.
         try {
             final SimulatedLatchTask task = new SimulatedLatchTask();
-            task.setId("4");
+            task.setId(poolSize + "");
             task.testThreadLatch = latch;
             new Thread(() -> QueueTaskManager.getInstance().push(task)).run();
         } catch (Throwable e) {
@@ -328,21 +329,24 @@ public class TaskManagerTest {
         }
 
         // queue should be the same.
-        log.debug("assertion for");
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(2, QueueTaskManager.getInstance().getPendingTaskCount());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize, QueueTaskManager.getInstance().getPendingTaskCount());
         // task_4 shouldn't be changed.
-        SimulatedLatchTask task_4_2 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("4");
-        assertSame(task_4_2, task_4);
+        SimulatedLatchTask task_pending_2 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(poolSize + "");
+        assertSame(task_pending_2, task_pending);
     }
 
+    @Test
     public void testCancelByTag() {
+        int poolSize = Runtime.getRuntime().availableProcessors();
+        int taskCount = poolSize * 2;
+
         CountDownLatch latch = new CountDownLatch(5);
         try {
-            for (int i=0; i<5; i++) {
+            for (int i=0; i<taskCount; i++) {
                 final SimulatedLatchTask task = new SimulatedLatchTask();
                 task.setId(Integer.toString(i));
-                if (i % 2 == 0) task.setTag("even");
+                task.setTag(i % 2 == 0 ? "even" : "odd");
                 task.testThreadLatch = latch;
                 new Thread(() -> QueueTaskManager.getInstance().queue(task)).run();
             }
@@ -354,37 +358,58 @@ public class TaskManagerTest {
         // wait a while so task will be put in the running queue
         waitAWhile();
 
-        log.debug("assertion for <testQueueTask> ");
-        assertEquals(3, QueueTaskManager.getInstance().getRunningTaskCount());
-        assertEquals(2, QueueTaskManager.getInstance().getPendingTaskCount());
+        assertEquals(poolSize, QueueTaskManager.getInstance().getRunningTaskCount());
+        assertEquals(taskCount - poolSize, QueueTaskManager.getInstance().getPendingTaskCount());
 
+        // task_0 is running
         SimulatedLatchTask task_0 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("0");
         assertEquals(YaaTask.State.Running, task_0.getState());
-        SimulatedLatchTask task_1 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("1");
-        assertEquals(YaaTask.State.Running, task_1.getState());
-        SimulatedLatchTask task_2 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("2");
-        assertEquals(YaaTask.State.Running, task_2.getState());
-        // task_3 is submitToApproval in head of the queue
-        SimulatedLatchTask task_3 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("3");
-        assertEquals(YaaTask.State.Pending, task_3.getState());
-        SimulatedLatchTask task_4 = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask("4");
-        assertEquals(YaaTask.State.Pending, task_4.getState());
+        // first pending task is pending
+        SimulatedLatchTask task_pending = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(poolSize + "");
+        assertEquals(YaaTask.State.Pending, task_pending.getState());
 
         log.debug("assertion for cancelByTag ");
         QueueTaskManager.getInstance().cancelByTag("even");
         waitAWhile();
-        assertEquals(2, QueueTaskManager.getInstance().getAllTasks().size());
-        // even task might be finished before cancelled
-        assertTrue(YaaTask.State.Cancelled == task_0.getState());
-        assertTrue(YaaTask.State.Cancelled == task_2.getState());
-        assertTrue(YaaTask.State.Cancelled == task_4.getState());
-        // task 1 keep running
-        assertEquals(YaaTask.State.Running, task_1.getState());
-        // task 3 start to run
-        assertTrue(YaaTask.State.Running ==task_3.getState()
-                || YaaTask.State.Pending == task_3.getState());
+        assertEquals(YaaTask.State.Cancelled, task_0.getState());
+        assertEquals(taskCount / 2, QueueTaskManager.getInstance().getAllTasks().size());
+
+        for (int i=0; i<taskCount; i++) {
+            SimulatedLatchTask task = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(i+"");
+            if (i % 2 == 0) {
+                assertNull(task);
+            } else {
+                if (i < poolSize) {
+                    assertTrue(YaaTask.State.Running ==task.getState()
+                        || YaaTask.State.Pending == task.getState());
+                }
+            }
+        }
     }
 
+    @Test
+    public void testDelayTask() {
+        CountDownLatch latch = new CountDownLatch(5);
+        try {
+            for (int i=0; i<5; i++) {
+                final SimulatedLatchTask task = new SimulatedLatchTask();
+                task.testThreadLatch = latch;
+                task.setId(i+"");
+                new Thread(() -> DelayTaskManager.getInstance().schedule(task, 1000)).run();
+            }
+        } catch (Throwable e) {
+            log.error("lock latch failed", e);
+            assertFalse(e.getMessage(), true);
+        }
+
+        // wait a while so task will be put in the running queue
+        waitAWhile();
+
+        for (int i=0; i<5; i++) {
+            SimulatedLatchTask task = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(i+"");
+            assertEquals(YaaTask.State.Pending, task.getState());
+        }
+    }
 
     @After
     public void tearDown() throws Exception {

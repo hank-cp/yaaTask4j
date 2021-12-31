@@ -16,10 +16,10 @@
 package org.laxture.yaatask;
 
 import org.apache.commons.lang3.StringUtils;
-import org.laxture.yaatask.YaaAsyncTask.MyFutureTask;
 import org.laxture.yaatask.TaskListener.TaskCancelledListener;
 import org.laxture.yaatask.TaskListener.TaskFailedListener;
 import org.laxture.yaatask.TaskListener.TaskFinishedListener;
+import org.laxture.yaatask.YaaAsyncTask.MyFutureTask;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 /**
  * @author <a href="https://github.com/hank-cp">Hank CP</a>
  */
+@SuppressWarnings("rawtypes")
 public abstract class TaskManager {
 
     private TaskFinishedListener mDefaultFinishedListener;
@@ -57,7 +58,7 @@ public abstract class TaskManager {
 
     protected abstract String getName();
 
-    protected abstract ManagedThreadPoolExecutor getExecutor();
+    protected abstract IManagedThreadPoolExecutor getExecutor();
 
     protected int getThreadPriority() {
         return Thread.NORM_PRIORITY;
@@ -76,7 +77,7 @@ public abstract class TaskManager {
     }
 
     public List<YaaAsyncTask<?>> getRunningTasks() {
-        return new ArrayList<>(getExecutor().mRunningPool);
+        return new ArrayList<>(getExecutor().getRunningPool());
     }
 
     public List<YaaAsyncTask<?>> getPendingTasks() {
@@ -85,7 +86,7 @@ public abstract class TaskManager {
 
     public List<YaaAsyncTask<?>> getAllTasks() {
         ArrayList<YaaAsyncTask<?>> tasks
-                = new ArrayList<>(getExecutor().mRunningPool);
+                = new ArrayList<>(getExecutor().getRunningPool());
         tasks.addAll(getPendingTasks());
         return tasks;
     }
@@ -108,29 +109,35 @@ public abstract class TaskManager {
         return null;
     }
 
+    @SuppressWarnings("unchecked")
+    protected <Result> MyFutureTask<Result> doExecute(YaaAsyncTask<Result> task) {
+        if (this.mDefaultFinishedListener != null) {
+            task.addFinishedListener(this.mDefaultFinishedListener);
+        }
+        if (this.mDefaultCancelledListener != null) {
+            task.addCancelledListener(this.mDefaultCancelledListener);
+        }
+        if (this.mDefaultFailedListener!= null) {
+            task.addFailedListener(this.mDefaultFailedListener);
+        }
+        return task.executeOnExecutor(getExecutor());
+    }
+
     /**
      * Put task to queue.
      */
+    @SuppressWarnings("unchecked")
     public void queue(YaaAsyncTask<?> task) {
         // no existed task, add to queue.
         if (reuseTask(task) == null) {
-            if (this.mDefaultFinishedListener != null) {
-                task.addFinishedListener(this.mDefaultFinishedListener);
-            }
-            if (this.mDefaultCancelledListener != null) {
-                task.addCancelledListener(this.mDefaultCancelledListener);
-            }
-            if (this.mDefaultFailedListener!= null) {
-                task.addFailedListener(this.mDefaultFailedListener);
-            }
-            task.executeOnExecutor(getExecutor());
+            doExecute(task);
         }
     }
 
     public <T> T queueAndAwait(YaaAsyncTask<T> task) {
         MyFutureTask<T> future = reuseTask(task);
         if (future == null) {
-            future = task.executeOnExecutor(getExecutor());
+            future = doExecute(task);
         }
         try {
             return future.get();
@@ -150,7 +157,7 @@ public abstract class TaskManager {
         MyFutureTask<?> future = reuseTask(task);
 
         if (future == null)
-            future = task.executeOnExecutor(getExecutor());
+            future = doExecute(task);
 
         // move added executor to the head of the queue
         if (future != null && future.getTask().getState() != YaaTask.State.Running) {
@@ -166,7 +173,7 @@ public abstract class TaskManager {
         MyFutureTask<T> future = reuseTask(task);
 
         if (future == null)
-            future = task.executeOnExecutor(getExecutor());
+            future = doExecute(task);
 
         // move added executor to the head of the queue
         if (future.getTask().getState() != YaaTask.State.Running) {
@@ -188,8 +195,8 @@ public abstract class TaskManager {
 
     @SuppressWarnings("rawtypes")
     public void cancelAll() {
-        synchronized (getExecutor().mRunningPool) {
-            for (YaaAsyncTask<?> runningTask : getExecutor().mRunningPool) runningTask.cancel();
+        synchronized (getExecutor().getRunningPool()) {
+            for (YaaAsyncTask<?> runningTask : getExecutor().getRunningPool()) runningTask.cancel();
 
             // cancel submitToApproval queue tasks
             for (Runnable runnable : getExecutor().getQueue()) {
@@ -204,8 +211,8 @@ public abstract class TaskManager {
     public void cancelByTag(Object tag) {
         if (tag == null) return;
 
-        synchronized (getExecutor().mRunningPool) {
-            for (YaaAsyncTask<?> runningTask : getExecutor().mRunningPool) {
+        synchronized (getExecutor().getRunningPool()) {
+            for (YaaAsyncTask<?> runningTask : getExecutor().getRunningPool()) {
                 if (tag.equals(runningTask.getTag())) runningTask.cancel();
             }
 
@@ -222,7 +229,7 @@ public abstract class TaskManager {
     public void cancel(YaaAsyncTask<?> task) {
         if (task == null) return;
 
-        for (YaaAsyncTask<?> runningTask : getExecutor().mRunningPool) {
+        for (YaaAsyncTask<?> runningTask : getExecutor().getRunningPool()) {
             if (task == runningTask) runningTask.cancel();
             return;
         }
@@ -260,7 +267,8 @@ public abstract class TaskManager {
         return mThreadFactory;
     }
 
-    protected static class ManagedThreadPoolExecutor extends ThreadPoolExecutor {
+    protected static class ManagedThreadPoolExecutor extends ThreadPoolExecutor
+            implements IManagedThreadPoolExecutor {
 
         private final List<YaaAsyncTask<?>> mRunningPool;
 
@@ -278,7 +286,7 @@ public abstract class TaskManager {
             MyFutureTask future = (MyFutureTask) runnable;
 
             // it's possible that the task is finished during this for loop, and
-            // task will be remove from sRunningPool
+            // task will be removed from sRunningPool
             // it might cause ConcurrentModificationException
             synchronized (mRunningPool) {
                 mRunningPool.add(future.getTask());
@@ -291,11 +299,58 @@ public abstract class TaskManager {
             MyFutureTask future = (MyFutureTask) runnable;
 
             // it's possible that the task is finished during this for loop, and
-            // task will be remove from sRunningPool
+            // task will be removed from sRunningPool
             // it might cause ConcurrentModificationException
             synchronized (mRunningPool) {
                 mRunningPool.remove(future.getTask());
             }
+        }
+
+        @Override
+        public List<YaaAsyncTask<?>> getRunningPool() {
+            return mRunningPool;
+        }
+    }
+
+    protected static class ManagedScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor
+            implements IManagedThreadPoolExecutor {
+
+        private final List<YaaAsyncTask<?>> mRunningPool;
+
+        public ManagedScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory) {
+            super(corePoolSize, threadFactory);
+            mRunningPool = Collections.synchronizedList(new ArrayList<>());
+        }
+
+        @SuppressWarnings("rawtypes")
+        @Override
+        protected void beforeExecute(Thread thread, Runnable runnable) {
+            MyFutureTask future = (MyFutureTask) runnable;
+
+            // it's possible that the task is finished during this for loop, and
+            // task will be removed from sRunningPool
+            // it might cause ConcurrentModificationException
+            synchronized (mRunningPool) {
+                mRunningPool.add(future.getTask());
+            }
+        }
+
+        @SuppressWarnings("rawtypes")
+        @Override
+        protected void afterExecute(Runnable runnable, Throwable throwable) {
+            MyFutureTask future = (MyFutureTask) runnable;
+
+            // it's possible that the task is finished during this for loop, and
+            // task will be removed from sRunningPool
+            // it might cause ConcurrentModificationException
+            synchronized (mRunningPool) {
+                mRunningPool.remove(future.getTask());
+            }
+        }
+
+        @Override
+        public List<YaaAsyncTask<?>> getRunningPool() {
+            return mRunningPool;
         }
     }
 
@@ -303,17 +358,17 @@ public abstract class TaskManager {
      * reuse existing executor. if it exists, reset its listener so
      * current UI shall response.
      */
-    @SuppressWarnings({"rawtypes"})
-    private MyFutureTask reuseTask(YaaAsyncTask task) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private <T> MyFutureTask<T> reuseTask(YaaAsyncTask<T> task) {
         if (StringUtils.isEmpty(task.getId())) return null;
 
         // connect latest TaskListener to existing task
-        synchronized (getExecutor().mRunningPool) {
-            for (YaaAsyncTask<?> runningTask : getExecutor().mRunningPool) {
+        synchronized (getExecutor().getRunningPool()) {
+            for (YaaAsyncTask<?> runningTask : getExecutor().getRunningPool()) {
                 if (!task.getId().equals(runningTask.getId())) continue;
                 // found!
-                runningTask.cloneTaskListeners(task);
-                return runningTask.getFuture();
+                runningTask.cloneTaskListeners((YaaTask) task);
+                return (MyFutureTask<T>) runningTask.getFuture();
             }
 
             // find in submitToApproval queue

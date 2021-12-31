@@ -25,7 +25,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class SerialTaskManager extends TaskManager {
 
-    private static final int KEEP_ALIVE = 0;
     private static final int QUEUE_CONSUMING_LIMIT = 1;
 
     private static final String QUEUE_DEFAULT = "DEFAULT";
@@ -41,10 +40,9 @@ public class SerialTaskManager extends TaskManager {
             synchronized (SerialTaskManager.class) {
                 if (instancePool.get(name) == null) {
                     SerialTaskManager instance = new SerialTaskManager();
-                    instance = new SerialTaskManager();
                     instance.mExecutor = new ManagedThreadPoolExecutor(
                             QUEUE_CONSUMING_LIMIT, QUEUE_CONSUMING_LIMIT,
-                            KEEP_ALIVE, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
+                            Long.MAX_VALUE, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
                             instance.getThreadFactory());
                     instancePool.put(name, instance);
                 }

@@ -46,5 +46,30 @@ public class YaaTaskBuilder {
         return task;
     }
 
+    public static void main(String[] args) {
+        DelayTaskManager.getInstance().schedule(YaaTaskBuilder.buildTask(() -> {
+            System.out.println(System.currentTimeMillis());
+            return null;
+        }), 1000);
+
+        DelayTaskManager.getInstance().schedule(YaaTaskBuilder.buildTask(() -> {
+            System.out.println(System.currentTimeMillis());
+            return null;
+        }), 1000);
+
+        DelayTaskManager.getInstance().schedule(YaaTaskBuilder.buildTask(() -> {
+            System.out.println(System.currentTimeMillis());
+            return null;
+        }), 1000);
+
+        DelayTaskManager.getInstance().schedule(YaaTaskBuilder.buildTask(() -> {
+            System.out.println(System.currentTimeMillis());
+            return null;
+        }), 1000);
+
+        while (true) {
+            // wait
+        }
+    }
 }
 

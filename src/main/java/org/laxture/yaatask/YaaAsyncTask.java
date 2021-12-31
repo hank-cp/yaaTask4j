@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 
 import static org.laxture.yaatask.TaskException.ERROR_CODE_INTERNAL_SERVER_ERROR;
 
