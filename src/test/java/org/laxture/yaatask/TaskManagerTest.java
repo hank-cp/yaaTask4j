@@ -387,30 +387,6 @@ public class TaskManagerTest {
         }
     }
 
-    @Test
-    public void testDelayTask() {
-        CountDownLatch latch = new CountDownLatch(5);
-        try {
-            for (int i=0; i<5; i++) {
-                final SimulatedLatchTask task = new SimulatedLatchTask();
-                task.testThreadLatch = latch;
-                task.setId(i+"");
-                new Thread(() -> DelayTaskManager.getInstance().schedule(task, 1000)).run();
-            }
-        } catch (Throwable e) {
-            log.error("lock latch failed", e);
-            assertFalse(e.getMessage(), true);
-        }
-
-        // wait a while so task will be put in the running queue
-        waitAWhile();
-
-        for (int i=0; i<5; i++) {
-            SimulatedLatchTask task = (SimulatedLatchTask) QueueTaskManager.getInstance().findTask(i+"");
-            assertEquals(YaaTask.State.Pending, task.getState());
-        }
-    }
-
     @After
     public void tearDown() throws Exception {
         SerialTaskManager.getInstance().cancelAll();
